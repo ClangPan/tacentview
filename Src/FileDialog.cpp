@@ -99,6 +99,7 @@ namespace tFileDialog
 		tString Name;
 		bool Hidden;
 		FileDialog* Dialog;
+		bool HasChildren = false;
 		bool ChildrenPopulated = false;
 		TreeNode* Parent;
 		tItList<TreeNode> Children;
@@ -665,7 +666,7 @@ bool ContentItem::CompareFunctionObject::operator() (const ContentItem& a, const
 					const char8_t* A = a.Name.Chars();
 					const char8_t* B = b.Name.Chars();
 					if (ConfigNaturalSort)
-						return ascending ? Viewer::NaturalSort(A, B) : !Viewer::NaturalSort(B, A);
+						return ascending ? Viewer::NaturalSort(A, B) : Viewer::NaturalSort(B, A);
 
 					// For alphanumeric sort on Windows we do a case-insensitive compare. For Linux we do a case-sensitive compare.
 					// We could have done a case-insensitive compare on Linux too but it propably makes more sense to do a straight sensitive
@@ -889,6 +890,60 @@ bool FileDialog::ProcessShareResults()
 }
 #endif
 
+bool tFileDialog::FileDialog::SortDir(const tSystem::tFileInfo &a, const tSystem::tFileInfo &b)
+{
+	Viewer::Config::ProfileData& profile = Viewer::Config::GetProfileData();
+
+	const tString& A = a.FileName.Chars();
+	const tString& B = b.FileName.Chars();
+	if (ConfigNaturalSort)
+		return profile.SortAscending ? Viewer::NaturalSort(A, B) : Viewer::NaturalSort(B, A);
+	else
+		return profile.SortAscending ? (tStd::tPstrcmp(A, B) < 0) : (tStd::tPstrcmp(A, B) > 0);
+}
+
+#include <filesystem>
+void tFileDialog::FileDialog::PopulateChildren(TreeNode* node)
+{
+	#ifdef PLATFORM_WINDOWS
+	if (!ProcessingNetworkPath || (node->Depth() >= 2))
+	#endif
+	{
+		// Need to be careful here. tFindDirs would (reasonably?) use the current working dir if we passed in an empty string.
+		tString currDir = NodeToDir(node);
+		tList<tFileInfo> foundDirs;
+		if (!currDir.IsEmpty())
+			tSystem::tFindDirs(foundDirs, currDir);
+
+		foundDirs.Sort(SortDir);
+
+		for (tFileInfo* dir = foundDirs.First(); dir; dir = dir->Next())
+		{
+			tString relDir = tSystem::tGetRelativePath(currDir, dir->FileName);
+			relDir.ExtractLeft("./");
+			relDir.ExtractRight("/");
+
+			TreeNode* child = new TreeNode(relDir, dir->Hidden, this, node);
+
+			tString childCurrDir = NodeToDir(child);
+			std::error_code errorCode;
+			for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(childCurrDir.Text(), errorCode))
+			{
+				if (errorCode) break;
+				if (entry.is_directory())
+				{
+					child->HasChildren = true;
+					break;
+				}
+			}
+
+			node->AppendChild(child);
+		}
+
+		node->HasChildren = foundDirs.Count() != 0;
+		node->ChildrenPopulated = true;
+	}
+}
 
 void FileDialog::TreeNodeRecursive(TreeNode* node, tStringItem* selectPathItemName, bool setYScrollToSel)
 {
@@ -900,8 +955,9 @@ void FileDialog::TreeNodeRecursive(TreeNode* node, tStringItem* selectPathItemNa
 
 	bool isSelected = (SelectedNode == node);
 	int flags =
-		ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick | ImGuiTreeNodeFlags_DefaultOpen |
-		((node->Children.GetNumItems() == 0) ? ImGuiTreeNodeFlags_Leaf : 0) |
+		ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick |
+		((node->Children.GetNumItems() != 0) ? ImGuiTreeNodeFlags_DefaultOpen : 0) |
+		((!node->HasChildren) ? ImGuiTreeNodeFlags_Leaf : 0) |
 		(isSelected ? ImGuiTreeNodeFlags_Selected : 0) |
 		(isSelected ? ImGuiTreeNodeFlags_AllowItemOverlap : 0);
 
@@ -987,27 +1043,7 @@ void FileDialog::TreeNodeRecursive(TreeNode* node, tStringItem* selectPathItemNa
 	// We only bother populating children if we need to.
 	if (populate && !node->ChildrenPopulated)
 	{
-		#ifdef PLATFORM_WINDOWS
-		if (!ProcessingNetworkPath || (node->Depth() >= 2))
-		#endif
-		{
-			// Need to be careful here. tFindDirs would (reasonably?) use the current working dir if we passed in an empty string.
-			tString currDir = NodeToDir(node);
-			tList<tFileInfo> foundDirs;
-			if (!currDir.IsEmpty())
-				tSystem::tFindDirs(foundDirs, currDir);
-
-			for (tFileInfo* dir = foundDirs.First(); dir; dir = dir->Next())
-			{
-				tString relDir = tSystem::tGetRelativePath(currDir, dir->FileName);
-				relDir.ExtractLeft("./");
-				relDir.ExtractRight("/");
-
-				TreeNode* child = new TreeNode(relDir, dir->Hidden, this, node);
-				node->AppendChild(child);
-			}
-			node->ChildrenPopulated = true;
-		}
+		PopulateChildren(node);
 	}
 
 	if (isOpen)
@@ -1038,7 +1074,6 @@ void FileDialog::InvalidateAllNodeContentRecursive(TreeNode* node)
 	for (tItList<TreeNode>::Iter child = node->Children.First(); child; child++)
 		InvalidateAllNodeContentRecursive(child.GetObject());
 }
-
 
 void FileDialog::DoSelectable(ContentItem* item)
 {
@@ -1074,12 +1109,19 @@ void FileDialog::DoSelectable(ContentItem* item)
 			{
 				// Need to create a new one and connect it up.
 				node = new TreeNode(item->Name, false, this, SelectedNode);
-				SelectedNode->AppendChild(node);
+				if (!SelectedNode->ChildrenPopulated)
+					PopulateChildren(SelectedNode);
+
 				tAssert(node->ChildrenPopulated == false);
 
 				tString newdir = NodeToDir(node);
 				node->Hidden = tIsHidden(newdir);
 			}
+			else if (!node->ChildrenPopulated)
+			{
+				PopulateChildren(node);
+			}
+
 			SelectedNode = node;
 			SelectedNode->SortingDirty = true;
 
@@ -1182,7 +1224,6 @@ tStringItem* FileDialog::BookmarksLoop()
 
 	return bookmarkItem;
 }
-
 
 bool tFileDialog::HorizontalSplitter(float thickness, float& height1, float& height2, float minHeight1, float minHeight2, float hoverExtend, float hoverDelay)
 {

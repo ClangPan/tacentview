@@ -102,8 +102,12 @@ private:
 	// the SelectedNode does not need to be cleared.
 	void InvalidateAllNodeContent();
 	void InvalidateAllNodeContentRecursive(TreeNode*);
+	void PopulateChildren(TreeNode*);
 	void TreeNodeRecursive(TreeNode*, tStringItem* selectPathItemName = nullptr, bool setYScrollToSel = false);
+
 	tStringItem* BookmarksLoop();
+
+	static bool SortDir(const tSystem::tFileInfo& a, const tSystem::tFileInfo& b);
 
 	#ifdef PLATFORM_WINDOWS
 	void RequestNetworkSharesThread();
