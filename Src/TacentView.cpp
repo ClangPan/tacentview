@@ -2723,7 +2723,7 @@ void Viewer::DoNavBar(int dispw, int disph, int barHeight)
 					if (ImagesDir == "/")
 						ImagesDir.Clear();
 					#endif
-					ImageToLoad = ImagesDir + subDir->FileName + "/" + "dummyfile.txt";
+					ImageToLoad = ImagesDir + relPath + "/" + "dummyfile.txt";
 					PopulateImages();
 					SetCurrentImage();
 					Gutil::SetWindowTitle();
