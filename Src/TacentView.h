@@ -16,6 +16,7 @@
 #include <Math/tVector2.h>
 #include <Math/tVector4.h>
 #include <System/tCmdLine.h>
+#include <System/tFile.h>
 #include "Config.h"
 #include "FileDialog.h"
 namespace Viewer { class Image; }
@@ -78,7 +79,7 @@ namespace Viewer
 	extern Image* CurrImage;
 	extern tString ImageToLoad;
 	extern tString ImagesDir;
-	extern tList<tStringItem> ImagesSubDirs;
+	extern tList<tSystem::tFileInfo> ImagesSubDirs;
 	extern tList<Viewer::Image> Images;
 	extern tItList<Viewer::Image> ImagesLoadTimeSorted;
 	extern tColour4b PixelColour;
@@ -138,7 +139,7 @@ namespace Viewer
 	bool DeleteImageFile(const tString& imgFile, bool tryUseRecycleBin);
 
 	// Code modified from https://github.com/scopeInfinity/NaturalSort
-	bool NaturalSort(const tString& first, const tString& second);	// Implements a natural sorting algorithm so files withs numbers appear in a pleasing format for 
+	//bool NaturalSort(const tString& first, const tString& second);	// Implements a natural sorting algorithm so files withs numbers appear in a pleasing format for 
 	bool NaturalSort(const char8_t* first, const char8_t* second);	// Implements a natural sorting algorithm so files withs numbers appear in a pleasing format for 
 	
 	Config::ProfileData::ZoomModeEnum GetZoomMode();				// Reads the ZoomModePerImage setting to see where to get the zoom mode.

@@ -78,6 +78,9 @@ public:
 	};
 	DialogState DoPopup();					// Call every frame and observe returned state.
 	tString GetResult();
+
+	static bool SortDirs(const tSystem::tFileInfo& a, const tSystem::tFileInfo& b);
+	static bool SortDirsStr(const tStringItem& a, const tStringItem& b);
 	
 private:
 	// The dialog uses a 'path' to represent the current directory. A path consists of a list of strings from root to
@@ -106,8 +109,6 @@ private:
 	void TreeNodeRecursive(TreeNode*, tStringItem* selectPathItemName = nullptr, bool setYScrollToSel = false);
 
 	tStringItem* BookmarksLoop();
-
-	static bool SortDir(const tSystem::tFileInfo& a, const tSystem::tFileInfo& b);
 
 	#ifdef PLATFORM_WINDOWS
 	void RequestNetworkSharesThread();

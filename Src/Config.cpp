@@ -455,6 +455,9 @@ void Config::ProfileData::Reset(Viewer::Profile profile, uint32 categories)
 
 		SortKey						= (profile == Profile::Kiosk) ? int(SortKeyEnum::Shuffle) : int(SortKeyEnum::Natural);
 		SortAscending				= true;
+		ShowHidden					= false;
+		NaturalSort					= true;
+		SortAscending				= true;
 		SlideshowAutoReshuffle		= true;
 	}
 

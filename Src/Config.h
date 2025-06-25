@@ -115,6 +115,9 @@ struct ProfileData
 	inline static bool IsCachedSortKey(SortKeyEnum key)		{ return (int(key) >= int(SortKeyEnum::FirstCachedKey)) && (int(key) <= int(SortKeyEnum::LastCachedKey)); }
 	bool SortAscending;										// Sort direction.
 
+	bool ShowHidden;
+	bool NaturalSort;
+
 	int OverlayCorner;
 	bool Tile;
 

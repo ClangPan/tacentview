@@ -119,10 +119,6 @@ namespace tFileDialog
 	tList<tStringItem> ConfigOpenDirPath(tListMode::StaticZero);
 	tList<tStringItem> ConfigSaveFilePath(tListMode::StaticZero);
 
-	// For now these state variables are saved globally for all dialog types.
-	bool ConfigShowHidden = false;
-	bool ConfigNaturalSort = true;
-
 	// Stores an individual bookmark comprised of a list of string path items. Bookmarks currently
 	// represent directories, not individual files. @todo This 'bookmark' class could easity become
 	// the basis for a tPath in Tacent. All it really is is a list of tStrings.
@@ -401,6 +397,7 @@ bool Bookmark::operator==(const Bookmark& b) const
 
 bool tFileDialog::Save(tExprWriter& writer, const tString& exprName)
 {
+	Viewer::Config::ProfileData& profile = Viewer::Config::GetProfileData();
 	writer.CR();
 	writer.Rem("File dialog configuration.");
 	writer.Begin();			writer.Indent();	writer.CR();
@@ -412,12 +409,12 @@ bool tFileDialog::Save(tExprWriter& writer, const tString& exprName)
 	writer.CR();
 
 	writer.Begin();
-	writer.Atom("ShowHidden");					writer.Atom(ConfigShowHidden);
+	writer.Atom("ShowHidden");					writer.Atom(profile.ShowHidden);
 	writer.End();
 	writer.CR();
 
 	writer.Begin();
-	writer.Atom("NaturalSort");					writer.Atom(ConfigNaturalSort);
+	writer.Atom("NaturalSort");					writer.Atom(profile.NaturalSort);
 	writer.End();
 	writer.CR();
 
@@ -480,6 +477,7 @@ bool tFileDialog::Load(tExpr expr, const tString& exprName)
 	int loadedVersion = 0;
 	if (e == exprName)
 	{
+		Viewer::Config::ProfileData& profile = Viewer::Config::GetProfileData();
 		for (tExpr e = expr.Item1(); e.IsValid(); e = e.Next())
 		{
 			switch (e.Command().Hash())
@@ -489,11 +487,11 @@ bool tFileDialog::Load(tExpr expr, const tString& exprName)
 					break;
 
 				case tHash::tHashCT("ShowHidden"):
-					ConfigShowHidden = e.Item1();
+					profile.ShowHidden = e.Item1();
 					break;
 
 				case tHash::tHashCT("NaturalSort"):
-					ConfigNaturalSort = e.Item1();
+					profile.NaturalSort = e.Item1();
 					break;
 
 				case tHash::tHashCT("OpenFilePath"):
@@ -663,9 +661,10 @@ bool ContentItem::CompareFunctionObject::operator() (const ContentItem& a, const
 			{
 				case FieldID::Name:
 				{
+					Viewer::Config::ProfileData& profile = Viewer::Config::GetProfileData();
 					const char8_t* A = a.Name.Chars();
 					const char8_t* B = b.Name.Chars();
-					if (ConfigNaturalSort)
+					if (profile.NaturalSort)
 						return ascending ? Viewer::NaturalSort(A, B) : Viewer::NaturalSort(B, A);
 
 					// For alphanumeric sort on Windows we do a case-insensitive compare. For Linux we do a case-sensitive compare.
@@ -890,13 +889,18 @@ bool FileDialog::ProcessShareResults()
 }
 #endif
 
-bool tFileDialog::FileDialog::SortDir(const tSystem::tFileInfo &a, const tSystem::tFileInfo &b)
+bool tFileDialog::FileDialog::SortDirs(const tSystem::tFileInfo& a, const tSystem::tFileInfo& b)
+{
+	return tFileDialog::FileDialog::SortDirsStr(a.FileName, b.FileName);
+}
+
+bool tFileDialog::FileDialog::SortDirsStr(const tStringItem& a, const tStringItem& b)
 {
 	Viewer::Config::ProfileData& profile = Viewer::Config::GetProfileData();
 
-	const tString& A = a.FileName.Chars();
-	const tString& B = b.FileName.Chars();
-	if (ConfigNaturalSort)
+	const tString& A = a.Chars();
+	const tString& B = b.Chars();
+	if (profile.NaturalSort)
 		return profile.SortAscending ? Viewer::NaturalSort(A, B) : Viewer::NaturalSort(B, A);
 	else
 		return profile.SortAscending ? (tStd::tPstrcmp(A, B) < 0) : (tStd::tPstrcmp(A, B) > 0);
@@ -915,7 +919,7 @@ void tFileDialog::FileDialog::PopulateChildren(TreeNode* node)
 		if (!currDir.IsEmpty())
 			tSystem::tFindDirs(foundDirs, currDir);
 
-		foundDirs.Sort(SortDir);
+		foundDirs.Sort(SortDirs);
 
 		for (tFileInfo* dir = foundDirs.First(); dir; dir = dir->Next())
 		{
@@ -947,10 +951,11 @@ void tFileDialog::FileDialog::PopulateChildren(TreeNode* node)
 
 void FileDialog::TreeNodeRecursive(TreeNode* node, tStringItem* selectPathItemName, bool setYScrollToSel)
 {
+	Viewer::Config::ProfileData& profile = Viewer::Config::GetProfileData();
 	// There were two ways to implement hidden. Invalidate everything and enumerate the filesystem objects again (less memory)
 	// or the implemented method: enumerate hidden and non-hidden always, and just display or not based on the hidden flag.
 	// This way, everything will be snappy when toggling hidden on/off.
-	if (!ConfigShowHidden && node->Hidden)
+	if (!profile.ShowHidden && node->Hidden)
 		return;
 
 	bool isSelected = (SelectedNode == node);
@@ -1376,16 +1381,18 @@ FileDialog::DialogState FileDialog::DoPopup()
 		}
 		Gutil::ToolTip("Up Directory");
 
+		Viewer::Config::ProfileData& profile = Viewer::Config::GetProfileData();
+
 		// Show hidden.
 		uint64 showHiddenImgID = Viewer::Image_ShowHidden.Bind();
 		ImGui::SameLine();
 		if (ImGui::ImageButton
 		(
 			ImTextureID(showHiddenImgID), toolImageSize, tVector2(0.0f, 1.0f), tVector2(1.0f, 0.0f), 1,
-			ConfigShowHidden ? ColourPressedBG : ColourBG, ColourEnabledTint)
+			profile.ShowHidden ? ColourPressedBG : ColourBG, ColourEnabledTint)
 		)
 		{
-			ConfigShowHidden = !ConfigShowHidden;
+			profile.ShowHidden = !profile.ShowHidden;
 		}
 		Gutil::ToolTip("Show Hidden");
 
@@ -1404,9 +1411,9 @@ FileDialog::DialogState FileDialog::DoPopup()
 
 		if (ImGui::BeginMenu("Options##FileDialog"))
 		{
-			if (ImGui::MenuItem("Show Hidden", "", &ConfigShowHidden))
+			if (ImGui::MenuItem("Show Hidden", "", &profile.ShowHidden))
 				DoRefresh(selectPathItemName, setYScrollToSel);
-			if (ImGui::MenuItem("Natural Sort", "", &ConfigNaturalSort))
+			if (ImGui::MenuItem("Natural Sort", "", &profile.NaturalSort))
 				DoRefresh(selectPathItemName, setYScrollToSel);
 			// @todo ImGui::MenuItem("List View");
 			// @todo ImGui::MenuItem("Details View");
@@ -1576,6 +1583,7 @@ FileDialog::DialogState FileDialog::DoPopup()
 					sortSpecs->SpecsDirty = false;
 				}
 
+				Viewer::Config::ProfileData& profile = Viewer::Config::GetProfileData();
 
 				// Do the content rows. We could use ImGuiListClipper here but so far, even with thousands of files in
 				// the Contents list, it is very responsive. Also, since it's a list rather than an array, we'd still
@@ -1586,7 +1594,7 @@ FileDialog::DialogState FileDialog::DoPopup()
 					// There were two ways to implement hidden. Invalidate everything and enumerate the filesystem objects again (less memory)
 					// or the implemented method: enumerate hidden and non-hidden always, and just display or not based on the hidden flag.
 					// This way, everything will be snappy when toggling hidden on/off.
-					if (!ConfigShowHidden && item->IsHidden)
+					if (!profile.ShowHidden && item->IsHidden)
 						continue;
 
 					ImGui::TableNextRow();

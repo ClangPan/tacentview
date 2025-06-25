@@ -35,7 +35,6 @@
 #include <Image/tImageQOI.h>		// For paste from clipboard.
 #include <Image/tImageBMP.h>		// For paste from clipboard.
 #include <Image/tImageTIFF.h>		// For paste from clipboard.
-#include <System/tFile.h>
 #include <System/tTime.h>
 #include <System/tScript.h>
 #include <System/tMachine.h>
@@ -197,7 +196,7 @@ namespace Viewer
 	OutputLog OutLog;
 
 	tString ImagesDir;
-	tList<tStringItem> ImagesSubDirs;
+	tList<tFileInfo> ImagesSubDirs;
 	tList<Image> Images;
 	tItList<Image> ImagesLoadTimeSorted(tListMode::External);		// We don't need static here cuz the list is only used after main().
 	tuint256 ImagesHash												= 0;
@@ -776,17 +775,16 @@ void Viewer::PopulateImagesSubDirs()
 	}
 	#endif
 
-	tList<tStringItem> foundDirs;
-	tFindDirs(foundDirs, ImagesDir, false);
-	for (tStringItem* dir = foundDirs.First(); dir; dir = dir->Next())
-	{
-		tString relPath = tGetRelativePath(ImagesDir, *dir);
-		relPath = tGetSimplifiedPath(relPath);
-		if (relPath[relPath.Length()-1] == '/')
-			relPath.ExtractRight(1);
+	tFindDirs(ImagesSubDirs, ImagesDir);
+	// for (tFileInfo* dir = ImagesSubDirs.First(); dir; dir = dir->Next())
+	// {
+	// 	tString relPath = tGetRelativePath(ImagesDir, dir->FileName);
+	// 	relPath = tGetSimplifiedPath(relPath);
+	// 	if (relPath[relPath.Length()-1] == '/')
+	// 		relPath.ExtractRight(1);
 
-		ImagesSubDirs.Append(new tStringItem(relPath));
-	}
+	// 	ImagesSubDirs.Append(new tStringItem(relPath));
+	// }
 }
 
 
@@ -2695,22 +2693,37 @@ void Viewer::DoNavBar(int dispw, int disph, int barHeight)
 	ImGui::SameLine();
 	float navRight = ImGui::GetCursorPosX();
 
+	Config::ProfileData& profile = Config::GetProfileData();
 	if (ImagesSubDirs.NumItems() > 0)
 	{
 		float comboSize = Gutil::GetUIParamExtent(27.0f, 64.0f);
 		if (ImGui::BeginCombo("##navcombo", nullptr, ImGuiComboFlags_PopupAlignLeft | ImGuiComboFlags_HeightLargest | ImGuiComboFlags_NoPreview, comboSize))
 		{
-			for (tStringItem* subDir = ImagesSubDirs.First(); subDir; subDir = subDir->Next())
+			ImagesSubDirs.Sort(tFileDialog::FileDialog::SortDirs);
+
+			// Show hidden.
+			ImGui::Checkbox("Show Hidden", &profile.ShowHidden);
+			ImGui::Separator();
+
+			for (tFileInfo* subDir = ImagesSubDirs.First(); subDir; subDir = subDir->Next())
 			{
+				if (subDir->Hidden && !profile.ShowHidden) continue;
+
 				bool isSelected = false;
-				if (ImGui::Selectable(subDir->Chr(), isSelected))
+
+				tString relPath = tGetRelativePath(ImagesDir, subDir->FileName);
+				relPath = tGetSimplifiedPath(relPath);
+				if (relPath[relPath.Length()-1] == '/')
+					relPath.ExtractRight(1);
+
+				if (ImGui::Selectable(relPath.Chr(), isSelected))
 				{
 					// Selection made. This only runs once.
 					#ifdef PLATFORM_WINDOWS
 					if (ImagesDir == "/")
 						ImagesDir.Clear();
 					#endif
-					ImageToLoad = ImagesDir + *subDir + "/" + "dummyfile.txt";
+					ImageToLoad = ImagesDir + subDir->FileName + "/" + "dummyfile.txt";
 					PopulateImages();
 					SetCurrentImage();
 					Gutil::SetWindowTitle();
@@ -2725,7 +2738,6 @@ void Viewer::DoNavBar(int dispw, int disph, int barHeight)
 	}
 
 	// Display the filename on the right.
-	Config::ProfileData& profile = Config::GetProfileData();
 	if
 	(
 		CurrImage && CurrImage->Filename.IsValid() &&
@@ -3699,74 +3711,74 @@ bool Viewer::DeleteImageFile(const tString& imgFile, bool tryUseRecycleBin)
 }
 
 // Code modified from https://github.com/scopeInfinity/NaturalSort
-bool Viewer::NaturalSort(const tString& first, const tString& second)
-{
-	// Indexes to traverse strings
-	int idx1 = 0;
-	int idx2 = 0;
+// bool Viewer::NaturalSort(const tString& first, const tString& second)
+// {
+// 	// Indexes to traverse strings
+// 	int idx1 = 0;
+// 	int idx2 = 0;
 
-	// Flag for Space Found Check
-	bool flagFoundSpace1 = false;
-	bool flagFoundSpace2 = false;
+// 	// Flag for Space Found Check
+// 	bool flagFoundSpace1 = false;
+// 	bool flagFoundSpace2 = false;
 
-	// Loop on every character
-	while (idx1 < first.Length() && idx2 < second.Length())
-	{
-		// Ignore More than One Continous Space
-		while (flagFoundSpace1 && idx1 < first.Length() && first[idx1] == ' ') idx1++;
-		flagFoundSpace1 = false;
-		if (first[idx1] == ' ') flagFoundSpace1 = true;
+// 	// Loop on every character
+// 	while (idx1 < first.Length() && idx2 < second.Length())
+// 	{
+// 		// Ignore More than One Continous Space
+// 		while (flagFoundSpace1 && idx1 < first.Length() && first[idx1] == ' ') idx1++;
+// 		flagFoundSpace1 = false;
+// 		if (first[idx1] == ' ') flagFoundSpace1 = true;
 		
-		while (flagFoundSpace2 && idx2 < second.Length() && second[idx2] == ' ') idx2++;
-		flagFoundSpace2 = false;
-		if (second[idx2] == ' ') flagFoundSpace2 = true;
+// 		while (flagFoundSpace2 && idx2 < second.Length() && second[idx2] == ' ') idx2++;
+// 		flagFoundSpace2 = false;
+// 		if (second[idx2] == ' ') flagFoundSpace2 = true;
 
-		// If both numbers are alphanumeric, compare as usual
-		if (!isdigit(first[idx1]) || !isdigit(second[idx2]))
-		{
-			// Normal comparision if any of character is non digit character
-			if (tolower(first[idx1]) < tolower(second[idx2]))
-				return true;
+// 		// If both numbers are alphanumeric, compare as usual
+// 		if (!isdigit(first[idx1]) || !isdigit(second[idx2]))
+// 		{
+// 			// Normal comparision if any of character is non digit character
+// 			if (tolower(first[idx1]) < tolower(second[idx2]))
+// 				return true;
 
-			if (tolower(second[idx1]) < tolower(first[idx2]))
-				return false;
+// 			if (tolower(second[idx1]) < tolower(first[idx2]))
+// 				return false;
 
-			idx1++; idx2++;
-		}
-		else
-		{
-			// Capture Numeric Part of Both String and then using it to compare Both
-			int lastNondigit1 = idx1;
-			int lastNondigit2 = idx2;
+// 			idx1++; idx2++;
+// 		}
+// 		else
+// 		{
+// 			// Capture Numeric Part of Both String and then using it to compare Both
+// 			int lastNondigit1 = idx1;
+// 			int lastNondigit2 = idx2;
 
-			// Find the index of the last number
-			for (size_t i = idx1; i < first.Length(); i++)
-			{
-				lastNondigit1 = i;
-				if (!isdigit(first[i])) break;
-			}
+// 			// Find the index of the last number
+// 			for (size_t i = idx1; i < first.Length(); i++)
+// 			{
+// 				lastNondigit1 = i;
+// 				if (!isdigit(first[i])) break;
+// 			}
 
-			for (size_t i = idx2; i < second.Length(); i++)
-			{
-				lastNondigit2 = i;
-				if (!isdigit(second[i])) break;
-			}
+// 			for (size_t i = idx2; i < second.Length(); i++)
+// 			{
+// 				lastNondigit2 = i;
+// 				if (!isdigit(second[i])) break;
+// 			}
 			
-			int digit1 = first.Mid(idx1, lastNondigit1 - idx1).AsInt32();
-			int digit2 = second.Mid(idx2, lastNondigit2 - idx2).AsInt32();
+// 			int digit1 = first.Mid(idx1, lastNondigit1 - idx1).AsInt32();
+// 			int digit2 = second.Mid(idx2, lastNondigit2 - idx2).AsInt32();
 
-			if (digit1 < digit2)
-				return true;
-			if (digit2 < digit1)
-				return false;
+// 			if (digit1 < digit2)
+// 				return true;
+// 			if (digit2 < digit1)
+// 				return false;
 
-			idx1 = lastNondigit1;
-			idx2 = lastNondigit2;
-		}
-	}
+// 			idx1 = lastNondigit1;
+// 			idx2 = lastNondigit2;
+// 		}
+// 	}
     
-	return false;
-}
+// 	return false;
+// }
 
 // Code modified from https://github.com/scopeInfinity/NaturalSort
 bool Viewer::NaturalSort(const char8_t* first, const char8_t* second)
